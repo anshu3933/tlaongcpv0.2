@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from ..models.user import User
 from ..models.user_session import UserSession
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,15 +9,6 @@ class UserRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
         
-    async def get_session_by_token(self, token_hash: str) -> Optional[UserSession]:
-        """Get a user session by token hash"""
-        try:
-            result = await self.session.execute(
-                select(UserSession).where(UserSession.token_hash == token_hash)
-            )
-            return result.scalar_one_or_none()
-        except Exception as e:
-            raise e
 
     async def get_by_id(self, user_id: int) -> Optional[User]:
         try:
@@ -108,8 +99,7 @@ class UserRepository:
         try:
             user = await self.get_by_id(user_id)
             if user:
-                # Use func.now() to match server_default behavior with timezone
-                user.last_login = func.now()
+                user.last_login = datetime.now(timezone.utc)
                 await self.update(user)
         except Exception as e:
             await self.session.rollback()
@@ -139,56 +129,20 @@ class UserRepository:
         except Exception as e:
             raise e
         
-    async def delete_expired_sessions(self) -> int:
-        """Delete all expired sessions and return count of deleted sessions"""
-        try:
-            current_time = datetime.now()
-            result = await self.session.execute(
-                select(UserSession).where(
-                    UserSession.expires_at < current_time
-                )
-            )
-            expired_sessions = result.scalars().all()
-            
-            for session in expired_sessions:
-                await self.session.delete(session)
-                
-            await self.session.commit()
-            return len(expired_sessions)
-        except Exception as e:
-            await self.session.rollback()
-            raise e
-            
-    async def delete_user_sessions(self, user_id: int) -> int:
-        """Delete all sessions for a user and return count of deleted sessions"""
-        try:
-            result = await self.session.execute(
-                select(UserSession).where(
-                    UserSession.user_id == user_id
-                )
-            )
-            user_sessions = result.scalars().all()
-            
-            for session in user_sessions:
-                await self.session.delete(session)
-                
-            await self.session.commit()
-            return len(user_sessions)
-        except Exception as e:
-            await self.session.rollback()
-            raise e
-        
     async def get_session_by_token_hash(self, token_hash: str) -> Optional[UserSession]:
         """Get a user session by token hash"""
-        result = await self.session.execute(
-            select(UserSession).where(UserSession.token_hash == token_hash)
-        )
-        return result.scalar_one_or_none()
+        try:
+            result = await self.session.execute(
+                select(UserSession).where(UserSession.token_hash == token_hash)
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            raise e
         
     async def delete_expired_sessions(self) -> int:
         """Delete all expired sessions and return count of deleted sessions"""
         try:
-            current_time = datetime.now()
+            current_time = datetime.now(timezone.utc)
             result = await self.session.execute(
                 select(UserSession).where(UserSession.expires_at < current_time)
             )
